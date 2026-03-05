@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 import SelectedOrgSync from "@/components/SelectedOrgSync";
+import { resolveCanOperateServices } from "@/lib/roleAccess";
 
 async function fetchOrgName(orgId: string) {
   try {
@@ -37,6 +38,7 @@ export default async function EnrollPage({
       </main>
     );
   }
+  const canOperate = await resolveCanOperateServices(session.user);
 
   return (
     <main
@@ -85,6 +87,11 @@ export default async function EnrollPage({
         <p style={{ color: "var(--muted)" }}>
           Configure your deployment settings before activating this service.
         </p>
+        {!canOperate ? (
+          <p style={{ color: "#8d2132", marginBottom: 0 }}>
+            You have viewer access. Enrollment is only available for org_admin or org_operator.
+          </p>
+        ) : null}
 
         <form
           action={`/api/orgs/${orgId}/enroll`}
@@ -132,6 +139,7 @@ export default async function EnrollPage({
 
           <button
             type="submit"
+            disabled={!canOperate}
             style={{
               background: "var(--accent)",
               color: "#ffffff",
@@ -139,7 +147,8 @@ export default async function EnrollPage({
               borderRadius: "999px",
               fontWeight: 600,
               border: "none",
-              cursor: "pointer",
+              cursor: canOperate ? "pointer" : "not-allowed",
+              opacity: canOperate ? 1 : 0.6,
               width: "fit-content"
             }}
           >

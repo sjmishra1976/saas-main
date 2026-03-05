@@ -174,6 +174,44 @@
         1320,
         280
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.SERVICE_ACTIVITY_INGEST_BASE_URL || 'http://api:4000') + '/orgs/' + ($env.ORG_ID || '') + '/selections/' + ($env.SELECTION_ID || '') + '/activity'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-service-activity-key",
+              "value": "={{$env.SERVICE_ACTIVITY_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { eventType: 'workflow_execution', status: 'completed', workflowName: 'Healthcare Customer Support Chat Assistant', message: 'Customer support workflow handled a chat request', customerId: $json.customer_id || '', intent: $json.intent || '', processedAt: $json.processed_at || $now } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "emit_service_activity",
+      "name": "Emit Service Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        520
+      ],
+      "continueOnFail": true
     }
   ],
   "pinData": {},
@@ -215,6 +253,11 @@
           },
           {
             "node": "Respond To Chat",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Emit Service Activity",
             "type": "main",
             "index": 0
           }

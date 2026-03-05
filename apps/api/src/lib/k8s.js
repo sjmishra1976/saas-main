@@ -42,6 +42,7 @@ export function buildK8sSpec({
       .replace("${TENANT_ID}", String(org._id))
       .replace("${ORG_ID}", String(org._id))
       .replace("${ORG_SLUG}", orgDnsSlug)
+      .replace("${SELECTION_ID}", String(selection._id || ""))
       .replace(/\$\{([A-Z0-9_]+)\}/g, (_m, name) => process.env[name] || "")
   }));
 

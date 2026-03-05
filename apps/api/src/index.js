@@ -4,7 +4,7 @@ import morgan from "morgan";
 import { requireAuth, getUserSub } from "./lib/auth.js";
 import { loadCatalog, findPackage } from "./lib/catalog.js";
 import { connectDb } from "./lib/db.js";
-import { Org, Selection } from "./lib/models.js";
+import { ActivityLog, Org, Selection } from "./lib/models.js";
 import { loadCapacityConfig, buildK8sSpec } from "./lib/k8s.js";
 import {
   applyManifests,
@@ -53,6 +53,46 @@ function buildPrefixedOrgName(handle, orgName) {
   const prefix = `${handle}-`;
   if (lowerName.startsWith(prefix.toLowerCase())) return cleanName;
   return `${handle}-${cleanName}`;
+}
+
+const ROLE_CLAIM = "https://vishusystems.com/roles";
+const ORG_ADMIN_ROLE = "org_admin";
+const ORG_OPERATOR_ROLE = "org_operator";
+
+function getUserRoles(req) {
+  const payload = req.auth?.payload || {};
+  const namespaced = payload[ROLE_CLAIM];
+  const plain = payload.roles;
+  const appMetadataRoles = payload.app_metadata?.roles;
+  const raw = Array.isArray(namespaced)
+    ? namespaced
+    : Array.isArray(plain)
+      ? plain
+      : Array.isArray(appMetadataRoles)
+        ? appMetadataRoles
+        : [];
+  return raw.map((v) => String(v).trim().toLowerCase());
+}
+
+function hasAnyRole(req, allowedRoles) {
+  const roles = getUserRoles(req);
+  return roles.some((role) => allowedRoles.has(role));
+}
+
+function isActivityIngestAuthorized(req) {
+  const configuredKey = process.env.SERVICE_ACTIVITY_INGEST_KEY || "";
+  if (!configuredKey) return false;
+  const providedKey =
+    req.get("x-service-activity-key") || req.get("x-api-key") || "";
+  return providedKey === configuredKey;
+}
+
+async function writeActivity({ orgId, selectionId, eventType, message, metadata = {} }) {
+  try {
+    await ActivityLog.create({ orgId, selectionId, eventType, message, metadata });
+  } catch {
+    // Activity logs should never block primary API flows.
+  }
 }
 
 async function generateOwnerScopedOrgSlug({ ownerUserId, orgName, ownerHandle }) {
@@ -140,6 +180,10 @@ app.post("/orgs", requireAuth, async (req, res) => {
 });
 
 app.delete("/orgs/:orgId", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: org_admin role required" });
+  }
+
   const { orgId } = req.params;
   const userSub = getUserSub(req);
   const org = await Org.findById(orgId).lean();
@@ -223,7 +267,61 @@ app.get("/orgs/:orgId/selections", requireAuth, async (req, res) => {
   res.json({ selections });
 });
 
+app.get("/orgs/:orgId/selections/:selectionId/activity", requireAuth, async (req, res) => {
+  const { orgId, selectionId } = req.params;
+  const userSub = getUserSub(req);
+  const org = await Org.findById(orgId).lean();
+  if (!org) return res.status(404).json({ error: "org not found" });
+  if (userSub && org.ownerUserId !== userSub) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+
+  const selection = await Selection.findOne({ _id: selectionId, orgId }).lean();
+  if (!selection) return res.status(404).json({ error: "selection not found" });
+
+  const logs = await ActivityLog.find({ orgId, selectionId })
+    .sort({ createdAt: -1 })
+    .limit(40)
+    .lean();
+  res.json({ logs });
+});
+
+app.post("/orgs/:orgId/selections/:selectionId/activity", async (req, res) => {
+  if (!isActivityIngestAuthorized(req)) {
+    return res.status(401).json({ error: "unauthorized activity ingest" });
+  }
+
+  const { orgId, selectionId } = req.params;
+  const org = await Org.findById(orgId).lean();
+  if (!org) return res.status(404).json({ error: "org not found" });
+  const selection = await Selection.findOne({ _id: selectionId, orgId }).lean();
+  if (!selection) return res.status(404).json({ error: "selection not found" });
+
+  const eventType = String(req.body?.eventType || "workflow_event");
+  const status = req.body?.status ? String(req.body.status) : "";
+  const workflowName = req.body?.workflowName
+    ? String(req.body.workflowName)
+    : "Workflow";
+  const message =
+    req.body?.message ||
+    `${workflowName}${status ? ` ${status}` : ""}`.trim() ||
+    "Workflow activity";
+
+  await writeActivity({
+    orgId,
+    selectionId,
+    eventType,
+    message,
+    metadata: req.body || {}
+  });
+  res.status(201).json({ ok: true });
+});
+
 app.post("/orgs/:orgId/selections", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE, ORG_OPERATOR_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: operator role required" });
+  }
+
   const { orgId } = req.params;
   const { serviceId, packageId, configOverrides } = req.body || {};
   if (!serviceId || !packageId) {
@@ -254,6 +352,10 @@ app.post("/orgs/:orgId/selections", requireAuth, async (req, res) => {
 });
 
 app.post("/orgs/:orgId/enroll", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE, ORG_OPERATOR_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: operator role required" });
+  }
+
   const { orgId } = req.params;
   const { serviceId, packageId, instances, capacityOption } = req.body || {};
   if (!serviceId || !packageId) {
@@ -281,11 +383,22 @@ app.post("/orgs/:orgId/enroll", requireAuth, async (req, res) => {
     instances: Number(instances || 1),
     capacityOption: capacityOption || "standard"
   });
+  await writeActivity({
+    orgId,
+    selectionId: selection._id,
+    eventType: "enrolled",
+    message: `Enrolled ${serviceId} (${packageId})`,
+    metadata: { instances: Number(instances || 1), capacityOption: capacityOption || "standard" }
+  });
 
   res.status(201).json({ selection });
 });
 
 app.patch("/orgs/:orgId/selections/:selectionId/status", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE, ORG_OPERATOR_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: operator role required" });
+  }
+
   const { orgId, selectionId } = req.params;
   const { status } = req.body || {};
   const allowed = new Set(["enrolled", "active", "inactive"]);
@@ -308,10 +421,21 @@ app.patch("/orgs/:orgId/selections/:selectionId/status", requireAuth, async (req
   if (!selection) {
     return res.status(404).json({ error: "selection not found" });
   }
+  await writeActivity({
+    orgId,
+    selectionId,
+    eventType: "status_changed",
+    message: `Status changed to ${status}`,
+    metadata: { status }
+  });
   res.json({ selection });
 });
 
 app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE, ORG_OPERATOR_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: operator role required" });
+  }
+
   const { orgId, selectionId } = req.params;
   const userSub = getUserSub(req);
   const org = await Org.findById(orgId).lean();
@@ -372,8 +496,19 @@ app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (re
       status: "active",
       deploymentStatus: enableDeploy ? "active" : "provisioning",
       endpointUrl: spec.endpoint,
+      editorUrl: spec.endpoint,
       lastDeploymentSpec: spec,
       lastDeploymentError: ""
+    });
+    await writeActivity({
+      orgId,
+      selectionId,
+      eventType: "activated",
+      message: "Service activated successfully",
+      metadata: {
+        endpoint: spec.endpoint,
+        deploymentStatus: enableDeploy ? "active" : "provisioning"
+      }
     });
   } catch (err) {
     if (enableDeploy) {
@@ -391,6 +526,13 @@ app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (re
       lastDeploymentSpec: spec,
       lastDeploymentError: errorMessage
     });
+    await writeActivity({
+      orgId,
+      selectionId,
+      eventType: "activation_failed",
+      message: "Service activation failed",
+      metadata: { error: errorMessage }
+    });
     return res.status(500).json({
       error: "deployment failed",
       details: errorMessage
@@ -404,7 +546,69 @@ app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (re
   });
 });
 
+app.post("/orgs/:orgId/selections/:selectionId/deactivate", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE, ORG_OPERATOR_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: operator role required" });
+  }
+
+  const { orgId, selectionId } = req.params;
+  const userSub = getUserSub(req);
+  const org = await Org.findById(orgId).lean();
+  if (!org) return res.status(404).json({ error: "org not found" });
+  if (userSub && org.ownerUserId !== userSub) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+
+  const selection = await Selection.findOne({ _id: selectionId, orgId }).lean();
+  if (!selection) return res.status(404).json({ error: "selection not found" });
+
+  const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
+  if (enableDeploy) {
+    const namespace = selection.lastDeploymentSpec?.namespace;
+    const appName = selection.lastDeploymentSpec?.name;
+    if (namespace && appName) {
+      try {
+        await cleanupByAppLabel({
+          namespace,
+          appName,
+          projectId: process.env.GCP_PROJECT_ID,
+          region: process.env.GCP_REGION,
+          clusterName: process.env.GKE_CLUSTER_NAME,
+          serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "deactivation failed",
+          details: err?.message || String(err)
+        });
+      }
+    }
+  }
+
+  const updated = await Selection.findByIdAndUpdate(
+    selectionId,
+    {
+      status: "inactive",
+      deploymentStatus: "pending"
+    },
+    { new: true }
+  ).lean();
+  await writeActivity({
+    orgId,
+    selectionId,
+    eventType: "deactivated",
+    message: "Service stopped successfully",
+    metadata: { deploymentStatus: "pending" }
+  });
+
+  res.json({ ok: true, selection: updated });
+});
+
 app.delete("/orgs/:orgId/selections/:selectionId", requireAuth, async (req, res) => {
+  if (!hasAnyRole(req, new Set([ORG_ADMIN_ROLE]))) {
+    return res.status(403).json({ error: "forbidden: org_admin role required" });
+  }
+
   const { orgId, selectionId } = req.params;
   const userSub = getUserSub(req);
   const org = await Org.findById(orgId).lean();
@@ -420,6 +624,13 @@ app.delete("/orgs/:orgId/selections/:selectionId", requireAuth, async (req, res)
   if (!deleted) {
     return res.status(404).json({ error: "selection not found" });
   }
+  await writeActivity({
+    orgId,
+    selectionId,
+    eventType: "selection_deleted",
+    message: "Service selection removed",
+    metadata: { serviceId: deleted.serviceId, packageId: deleted.packageId }
+  });
 
   const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
   if (enableDeploy) {

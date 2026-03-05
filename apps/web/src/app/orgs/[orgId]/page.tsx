@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 import SelectedOrgSync from "@/components/SelectedOrgSync";
+import { resolveCanOperateServices } from "@/lib/roleAccess";
 
 async function fetchWithToken(path: string) {
   const { token: accessToken } = await auth0.getAccessToken();
@@ -27,6 +28,7 @@ export default async function OrgServicesPage({
       </main>
     );
   }
+  const canOperate = await resolveCanOperateServices(session.user);
 
   const servicesRes = await fetchWithToken(`/orgs/${orgId}/services`);
   const services = servicesRes.ok
@@ -88,6 +90,7 @@ export default async function OrgServicesPage({
               instances: number;
               capacityOption: string;
               endpointUrl?: string;
+              editorUrl?: string;
               deploymentStatus?: string;
             } | null;
           }) => {
@@ -122,19 +125,34 @@ export default async function OrgServicesPage({
                   }}
                 >
                   {status === "not_enrolled" ? (
-                    <Link
-                      href={`/orgs/${orgId}/enroll?serviceId=${service.id}&packageId=${primaryPackage?.id || ""}`}
-                      style={{
-                        padding: "0.2rem 0.6rem",
-                        borderRadius: "999px",
-                        fontSize: "0.8rem",
-                        border: "1px solid var(--stroke)",
-                        background: "#ffffff",
-                        color: "var(--text)"
-                      }}
-                    >
-                      not enrolled
-                    </Link>
+                    canOperate ? (
+                      <Link
+                        href={`/orgs/${orgId}/enroll?serviceId=${service.id}&packageId=${primaryPackage?.id || ""}`}
+                        style={{
+                          padding: "0.2rem 0.6rem",
+                          borderRadius: "999px",
+                          fontSize: "0.8rem",
+                          border: "1px solid var(--stroke)",
+                          background: "#ffffff",
+                          color: "var(--text)"
+                        }}
+                      >
+                        not enrolled
+                      </Link>
+                    ) : (
+                      <span
+                        style={{
+                          padding: "0.2rem 0.6rem",
+                          borderRadius: "999px",
+                          fontSize: "0.8rem",
+                          border: "1px solid var(--stroke)",
+                          background: "#ffffff",
+                          color: "var(--muted)"
+                        }}
+                      >
+                        not enrolled (viewer)
+                      </span>
+                    )
                   ) : (
                     <span
                       style={{
@@ -156,18 +174,16 @@ export default async function OrgServicesPage({
                   )}
                 </div>
 
-                {service.selection?.endpointUrl ? (
-                  <a
-                    href={service.selection.endpointUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                {selectionId ? (
+                  <Link
+                    href={`/orgs/${orgId}/services/${selectionId}`}
                     style={{ color: "var(--accent)" }}
                   >
-                    {service.selection.endpointUrl}
-                  </a>
+                    Open Service Console
+                  </Link>
                 ) : null}
 
-                {status !== "not_enrolled" ? (
+                {status !== "not_enrolled" && canOperate ? (
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                     {status !== "active" && selectionId ? (
                       <form
@@ -192,10 +208,9 @@ export default async function OrgServicesPage({
 
                     {status === "active" && selectionId ? (
                       <form
-                        action={`/api/orgs/${orgId}/selections/${selectionId}/status`}
+                        action={`/api/orgs/${orgId}/selections/${selectionId}/deactivate`}
                         method="post"
                       >
-                        <input type="hidden" name="status" value="inactive" />
                         <button
                           type="submit"
                           style={{
@@ -207,7 +222,7 @@ export default async function OrgServicesPage({
                             cursor: "pointer"
                           }}
                         >
-                          Deactivate
+                          Stop Service
                         </button>
                       </form>
                     ) : null}

@@ -28,8 +28,25 @@ const SelectionSchema = new mongoose.Schema(
       default: "pending"
     },
     endpointUrl: { type: String, default: "" },
+    editorUrl: { type: String, default: "" },
     lastDeploymentSpec: { type: Object, default: {} },
     lastDeploymentError: { type: String, default: "" }
+  },
+  { timestamps: true }
+);
+
+const ActivityLogSchema = new mongoose.Schema(
+  {
+    orgId: { type: mongoose.Schema.Types.ObjectId, ref: "Org", index: true, required: true },
+    selectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Selection",
+      index: true,
+      required: true
+    },
+    eventType: { type: String, required: true },
+    message: { type: String, required: true },
+    metadata: { type: Object, default: {} }
   },
   { timestamps: true }
 );
@@ -37,3 +54,5 @@ const SelectionSchema = new mongoose.Schema(
 export const Org = mongoose.models.Org || mongoose.model("Org", OrgSchema);
 export const Selection =
   mongoose.models.Selection || mongoose.model("Selection", SelectionSchema);
+export const ActivityLog =
+  mongoose.models.ActivityLog || mongoose.model("ActivityLog", ActivityLogSchema);

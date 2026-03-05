@@ -200,6 +200,44 @@
         380
       ],
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.SERVICE_ACTIVITY_INGEST_BASE_URL || 'http://api:4000') + '/orgs/' + ($env.ORG_ID || '') + '/selections/' + ($env.SELECTION_ID || '') + '/activity'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-service-activity-key",
+              "value": "={{$env.SERVICE_ACTIVITY_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { eventType: 'workflow_execution', status: 'completed', workflowName: 'SMB Sales - Lead Generation & Enrichment', message: 'Sales workflow execution completed', leadCount: 1, processedAt: $now } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "emit_service_activity",
+      "name": "Emit Service Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        560
+      ],
+      "continueOnFail": true
     }
   ],
   "pinData": {},
@@ -258,6 +296,11 @@
           },
           {
             "node": "Store Lead in DB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Emit Service Activity",
             "type": "main",
             "index": 0
           }

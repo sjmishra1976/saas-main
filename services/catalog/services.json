@@ -32,7 +32,10 @@
               "GOOGLE_SHEETS_INGEST_URL": "${GOOGLE_SHEETS_INGEST_URL}",
               "GOOGLE_SHEETS_INGEST_KEY": "${GOOGLE_SHEETS_INGEST_KEY}",
               "LEAD_DB_INGEST_URL": "${LEAD_DB_INGEST_URL}",
-              "LEAD_DB_INGEST_KEY": "${LEAD_DB_INGEST_KEY}"
+              "LEAD_DB_INGEST_KEY": "${LEAD_DB_INGEST_KEY}",
+              "SERVICE_ACTIVITY_INGEST_BASE_URL": "${SERVICE_ACTIVITY_INGEST_BASE_URL}",
+              "SERVICE_ACTIVITY_INGEST_KEY": "${SERVICE_ACTIVITY_INGEST_KEY}",
+              "SELECTION_ID": "${SELECTION_ID}"
             }
           },
           "docs": "docs/sales-assistant.md"
@@ -71,7 +74,10 @@
               "SUPPORT_DB_INGEST_URL": "${SUPPORT_DB_INGEST_URL}",
               "SUPPORT_DB_INGEST_KEY": "${SUPPORT_DB_INGEST_KEY}",
               "SUPPORT_SHEETS_INGEST_URL": "${SUPPORT_SHEETS_INGEST_URL}",
-              "SUPPORT_SHEETS_INGEST_KEY": "${SUPPORT_SHEETS_INGEST_KEY}"
+              "SUPPORT_SHEETS_INGEST_KEY": "${SUPPORT_SHEETS_INGEST_KEY}",
+              "SERVICE_ACTIVITY_INGEST_BASE_URL": "${SERVICE_ACTIVITY_INGEST_BASE_URL}",
+              "SERVICE_ACTIVITY_INGEST_KEY": "${SERVICE_ACTIVITY_INGEST_KEY}",
+              "SELECTION_ID": "${SELECTION_ID}"
             }
           },
           "docs": "docs/customer-service-assistant.md"

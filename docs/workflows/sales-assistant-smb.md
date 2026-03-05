@@ -20,6 +20,9 @@ Workflow file:
 - `GOOGLE_SHEETS_INGEST_KEY=...`
 - `LEAD_DB_INGEST_URL=https://...`
 - `LEAD_DB_INGEST_KEY=...`
+- `SERVICE_ACTIVITY_INGEST_BASE_URL=http://api:4000`
+- `SERVICE_ACTIVITY_INGEST_KEY=...`
+- `SELECTION_ID` (injected by platform at deploy time)
 
 ## Notes
 - For Google Sheets, easiest path is an Apps Script Web App endpoint that appends rows.

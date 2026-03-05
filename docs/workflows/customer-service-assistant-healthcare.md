@@ -43,6 +43,9 @@ Workflow file:
 - `SUPPORT_DB_INGEST_KEY=...`
 - `SUPPORT_SHEETS_INGEST_URL=https://...`
 - `SUPPORT_SHEETS_INGEST_KEY=...`
+- `SERVICE_ACTIVITY_INGEST_BASE_URL=http://api:4000`
+- `SERVICE_ACTIVITY_INGEST_KEY=...`
+- `SELECTION_ID` (injected by platform at deploy time)
 
 ## Knowledge file option
 Set `SUPPORT_KB_JSON` with your knowledge entries, for example:

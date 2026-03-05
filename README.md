@@ -10,6 +10,12 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
 ## Auth0 wiring
 - Web app uses `@auth0/nextjs-auth0`.
 - API uses JWT verification via Auth0 and `express-oauth2-jwt-bearer`.
+- Role claim for authorization:
+  - Add roles to token under `https://vishusystems.com/roles` (array).
+  - Supported roles: `org_admin`, `org_operator`, `org_viewer`.
+  - API enforcement:
+    - `org_admin`: delete org, delete selection
+    - `org_admin` or `org_operator`: enroll, activate, deactivate, status updates
 - Copy env templates:
   - `apps/web/.env.local.example` -> `apps/web/.env.local`
   - `apps/api/.env.example` -> `apps/api/.env`
@@ -50,6 +56,9 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
   - n8n worker deployment (`n8n worker`, replicas from selected instances)
   - per-service Redis deployment/service
   - service + GCE ingress for the main deployment
+  - Web app service console (Auth0-protected) is available per selection:
+    - `/orgs/<orgId>/services/<selectionId>`
+    - Includes Start/Stop controls and `Open Workflow Editor` link to n8n main UI.
 - Required API env for n8n queue mode:
   - `N8N_DB_HOST`, `N8N_DB_PORT`, `N8N_DB_NAME`, `N8N_DB_USER`, `N8N_DB_PASSWORD`
   - `N8N_ENCRYPTION_KEY`
@@ -58,16 +67,20 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
     - `ENRICHMENT_API_URL`, `ENRICHMENT_API_KEY`
     - `GOOGLE_SHEETS_INGEST_URL`, `GOOGLE_SHEETS_INGEST_KEY`
     - `LEAD_DB_INGEST_URL`, `LEAD_DB_INGEST_KEY`
+    - `SERVICE_ACTIVITY_INGEST_BASE_URL`, `SERVICE_ACTIVITY_INGEST_KEY`
   - Customer service workflow env:
     - `HEALTHCARE_PROVIDER_NAME`, `SUPPORT_EMAIL` (default `contact@vishusystems.com`)
     - `SUPPORT_KB_JSON`
     - `SUPPORT_DB_INGEST_URL`, `SUPPORT_DB_INGEST_KEY`
     - `SUPPORT_SHEETS_INGEST_URL`, `SUPPORT_SHEETS_INGEST_KEY`
+    - `SERVICE_ACTIVITY_INGEST_BASE_URL`, `SERVICE_ACTIVITY_INGEST_KEY`
 - Local compose already provides these defaults via `n8n-postgres` and `n8n-redis`.
 - Both service package images auto-import bundled workflows at container startup via package entrypoint:
   - Sales: `services/packages/sales-assistant/workflows/smb-sales-lead-gen-enrichment.json`
   - Customer support: `services/packages/customer-service-assistant/workflows/healthcare-customer-support-chat.json`
   - Local n8n bootstrap image (for UI testing): `services/packages/local-n8n/workflows/*`
+- Workflows can emit runtime activity logs back to API via:
+  - `POST /orgs/:orgId/selections/:selectionId/activity` (header `x-service-activity-key`)
 
 ## Build Service Images
 - Shared builder script:

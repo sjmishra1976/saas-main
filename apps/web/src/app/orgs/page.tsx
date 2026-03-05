@@ -4,6 +4,7 @@ import { fetchFromApi } from "@/lib/apiBase";
 import OrgCardActions from "@/components/OrgCardActions";
 import { getSelectedOrgId, pickSelectedOrg } from "@/lib/selectedOrg";
 import { deriveOwnerPrefix } from "@/lib/ownerPrefix";
+import { resolveCanAdminOrgs } from "@/lib/roleAccess";
 
 async function fetchOrgs() {
   try {
@@ -57,6 +58,7 @@ export default async function OrgsPage() {
 
   const ownerPrefix = deriveOwnerPrefix(session.user);
   const data = await ensureDefaultOrg(ownerPrefix);
+  const canRemoveOrg = await resolveCanAdminOrgs(session.user);
   const selectedOrgId = await getSelectedOrgId();
   const primaryOrg = pickSelectedOrg(data.orgs || [], selectedOrgId);
 
@@ -142,7 +144,7 @@ export default async function OrgsPage() {
               <span style={{ color: "var(--muted)" }}>
                 Open services and manage subscriptions
               </span>
-              <OrgCardActions orgId={orgId} orgName={org.name} />
+              <OrgCardActions orgId={orgId} orgName={org.name} canRemove={canRemoveOrg} />
             </div>
           );
         })}
@@ -165,7 +167,7 @@ export default async function OrgsPage() {
         <label style={{ fontWeight: 600 }}>Create a new organization</label>
         <input
           name="name"
-          placeholder="e.g. Vishu Systems Growth"
+          placeholder="e.g. accounting-org"
           required
           style={{
             padding: "0.7rem 0.9rem",

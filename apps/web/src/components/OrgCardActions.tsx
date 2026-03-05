@@ -5,9 +5,10 @@ import Link from "next/link";
 type Props = {
   orgId: string;
   orgName: string;
+  canRemove?: boolean;
 };
 
-export default function OrgCardActions({ orgId, orgName }: Props) {
+export default function OrgCardActions({ orgId, orgName, canRemove = false }: Props) {
   return (
     <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
       <Link
@@ -23,31 +24,33 @@ export default function OrgCardActions({ orgId, orgName }: Props) {
       >
         Select
       </Link>
-      <form
-        action={`/api/orgs/${orgId}/delete`}
-        method="post"
-        onSubmit={(e) => {
-          const ok = window.confirm(
-            `Remove organization '${orgName}'? This will delete all enrolled services and deployed instances.`
-          );
-          if (!ok) e.preventDefault();
-        }}
-      >
-        <button
-          type="submit"
-          style={{
-            border: "1px solid #c76373",
-            background: "#ffe6ea",
-            color: "#8d2132",
-            padding: "0.45rem 0.9rem",
-            borderRadius: "999px",
-            width: "fit-content",
-            cursor: "pointer"
+      {canRemove ? (
+        <form
+          action={`/api/orgs/${orgId}/delete`}
+          method="post"
+          onSubmit={(e) => {
+            const ok = window.confirm(
+              `Remove organization '${orgName}'? This will delete all enrolled services and deployed instances.`
+            );
+            if (!ok) e.preventDefault();
           }}
         >
-          Remove Org
-        </button>
-      </form>
+          <button
+            type="submit"
+            style={{
+              border: "1px solid #c76373",
+              background: "#ffe6ea",
+              color: "#8d2132",
+              padding: "0.45rem 0.9rem",
+              borderRadius: "999px",
+              width: "fit-content",
+              cursor: "pointer"
+            }}
+          >
+            Remove Org
+          </button>
+        </form>
+      ) : null}
     </div>
   );
 }

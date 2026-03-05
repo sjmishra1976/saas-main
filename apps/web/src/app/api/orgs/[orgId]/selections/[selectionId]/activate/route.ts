@@ -8,6 +8,8 @@ export async function POST(
 ) {
   const { orgId, selectionId } = await context.params;
   const { token: accessToken } = await auth0.getAccessToken();
+  const url = new URL(req.url);
+  const backTo = url.searchParams.get("next") || `/orgs/${orgId}`;
 
   const res = await fetchFromApi(
     `/orgs/${orgId}/selections/${selectionId}/activate`,
@@ -27,5 +29,5 @@ export async function POST(
     );
   }
 
-  return NextResponse.redirect(new URL(`/orgs/${orgId}`, req.url));
+  return NextResponse.redirect(new URL(backTo, req.url));
 }
