@@ -1,0 +1,246 @@
+{
+  "name": "Healthcare Customer Support Chat Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "customer-support/chat",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_in",
+      "name": "Customer Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        280
+      ],
+      "webhookId": "cust-support-chat"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "provider_name",
+              "value": "={{$env.HEALTHCARE_PROVIDER_NAME || 'Vishu HealthCare'}}",
+              "type": "string"
+            },
+            {
+              "name": "support_email",
+              "value": "={{$env.SUPPORT_EMAIL || 'contact@vishusystems.com'}}",
+              "type": "string"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{$json.body?.customerId || $json.body?.customer_id || 'anonymous'}}",
+              "type": "string"
+            },
+            {
+              "name": "channel",
+              "value": "={{$json.body?.channel || 'webchat'}}",
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "value": "={{$json.body?.message || ''}}",
+              "type": "string"
+            },
+            {
+              "name": "locale",
+              "value": "={{$json.body?.locale || 'en-US'}}",
+              "type": "string"
+            },
+            {
+              "name": "received_at",
+              "value": "={{$now}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize_input",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        500,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const payload = $json;\nconst text = String(payload.message || '').trim();\nconst lower = text.toLowerCase();\n\nconst kbFromEnv = process.env.SUPPORT_KB_JSON || '';\nconst fallbackKb = {\n  billing: {\n    answer: 'For billing questions (invoice, copay, claims), our billing desk is available Mon-Fri 8am-6pm local time. Please share your patient ID and invoice number securely. You can also email billing@vishuhealthcare.example.',\n    links: ['https://support.vishuhealthcare.example/billing']\n  },\n  appointment: {\n    answer: 'To schedule, reschedule, or cancel appointments, use the patient portal or call +1-800-555-0100. Same-day slots depend on provider availability.',\n    links: ['https://support.vishuhealthcare.example/appointments']\n  },\n  prescription: {\n    answer: 'Prescription refill requests can be submitted in the portal under Medications. Typical turnaround is 24-48 hours after physician review.',\n    links: ['https://support.vishuhealthcare.example/prescriptions']\n  },\n  records: {\n    answer: 'Medical record requests require identity verification and consent. Submit request in portal under Records, or contact records@vishuhealthcare.example.',\n    links: ['https://support.vishuhealthcare.example/medical-records']\n  },\n  insurance: {\n    answer: 'For insurance coverage and eligibility, share your payer and plan details. We can verify benefits before your next visit.',\n    links: ['https://support.vishuhealthcare.example/insurance']\n  },\n  technical: {\n    answer: 'If you are having portal login or app issues, clear browser cache, retry password reset, and confirm MFA setup. If still blocked, contact support.',\n    links: ['https://support.vishuhealthcare.example/portal-help']\n  },\n  general: {\n    answer: 'I can help with appointments, billing, prescriptions, records, insurance, and portal access. Tell me your question in one sentence.',\n    links: ['https://support.vishuhealthcare.example/help-center']\n  }\n};\n\nlet kb = fallbackKb;\nif (kbFromEnv) {\n  try {\n    kb = JSON.parse(kbFromEnv);\n  } catch (e) {\n    kb = fallbackKb;\n  }\n}\n\nconst intents = [\n  { key: 'billing', keywords: ['bill', 'billing', 'invoice', 'payment', 'copay', 'claim'] },\n  { key: 'appointment', keywords: ['appointment', 'schedule', 'reschedule', 'cancel', 'doctor visit'] },\n  { key: 'prescription', keywords: ['prescription', 'refill', 'medicine', 'medication', 'pharmacy'] },\n  { key: 'records', keywords: ['record', 'medical record', 'lab result', 'report', 'test result'] },\n  { key: 'insurance', keywords: ['insurance', 'coverage', 'benefit', 'payer', 'plan'] },\n  { key: 'technical', keywords: ['login', 'password', 'portal', 'otp', 'mfa', 'app issue', 'technical'] }\n];\n\nlet detectedIntent = 'general';\nfor (const intent of intents) {\n  if (intent.keywords.some((k) => lower.includes(k))) {\n    detectedIntent = intent.key;\n    break;\n  }\n}\n\nconst kbEntry = kb[detectedIntent] || kb.general || fallbackKb.general;\nconst confidence = detectedIntent === 'general' ? 0.55 : 0.86;\nconst escalationNeeded = detectedIntent === 'general' || lower.includes('urgent') || lower.includes('emergency');\n\nconst responseText = [\n  `Hi, this is ${payload.provider_name} virtual support.`,\n  kbEntry.answer,\n  escalationNeeded\n    ? `If this is urgent, please call emergency services immediately. For live help, email ${payload.support_email}.`\n    : `If you need a human agent, email ${payload.support_email}.`\n].join(' ');\n\nreturn {\n  json: {\n    ...payload,\n    intent: detectedIntent,\n    confidence,\n    escalation_needed: escalationNeeded,\n    knowledge_links: kbEntry.links || [],\n    response_text: responseText,\n    status: 'resolved_by_assistant',\n    processed_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "intent_and_response",
+      "name": "Detect Intent + Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPPORT_DB_INGEST_URL || 'https://httpbin.org/anything'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{$env.SUPPORT_DB_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  customer_id: $json.customer_id,\n  channel: $json.channel,\n  locale: $json.locale,\n  message: $json.message,\n  intent: $json.intent,\n  confidence: $json.confidence,\n  escalation_needed: $json.escalation_needed,\n  response_text: $json.response_text,\n  knowledge_links: $json.knowledge_links,\n  received_at: $json.received_at,\n  processed_at: $json.processed_at\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store_support_log",
+      "name": "Store Support Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPPORT_SHEETS_INGEST_URL || 'https://httpbin.org/anything'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{$env.SUPPORT_SHEETS_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  customer_id: $json.customer_id,\n  intent: $json.intent,\n  confidence: $json.confidence,\n  escalation_needed: $json.escalation_needed,\n  summary: $json.response_text,\n  received_at: $json.received_at,\n  processed_at: $json.processed_at\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store_support_sheet",
+      "name": "Store Support Summary in Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        360
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  ok: true,\n  provider: $json.provider_name,\n  customer_id: $json.customer_id,\n  intent: $json.intent,\n  confidence: $json.confidence,\n  escalation_needed: $json.escalation_needed,\n  response: $json.response_text,\n  references: $json.knowledge_links,\n  support_email: $json.support_email\n} }}",
+        "options": {}
+      },
+      "id": "webhook_response",
+      "name": "Respond To Chat",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1320,
+        280
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Customer Chat Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Detect Intent + Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Intent + Build Response": {
+      "main": [
+        [
+          {
+            "node": "Store Support Conversation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Support Summary in Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond To Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "custsvc-template"
+  },
+  "id": "custsvc-healthcare-chat",
+  "tags": [
+    {
+      "name": "cust-service-asst"
+    },
+    {
+      "name": "healthcare-support"
+    },
+    {
+      "name": "chatbot"
+    }
+  ]
+}

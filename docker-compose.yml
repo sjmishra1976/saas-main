@@ -1,0 +1,177 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: saas-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: saas-api
+    container_name: saas-api
+    working_dir: /repo/apps/api
+    command: sh -c "npm install && npm run dev"
+    environment:
+      PORT: 4000
+      AUTH_REQUIRED: "true"
+      AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      MONGODB_URI: mongodb://mongo:27017/saas_main
+      SERVICE_DOMAIN: ${SERVICE_DOMAIN}
+      ENABLE_GKE_DEPLOY: ${ENABLE_GKE_DEPLOY:-false}
+      N8N_DB_HOST: ${N8N_DB_HOST:-n8n-postgres}
+      N8N_DB_PORT: ${N8N_DB_PORT:-5432}
+      N8N_DB_NAME: ${N8N_DB_NAME:-n8n}
+      N8N_DB_USER: ${N8N_DB_USER:-n8n}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:-n8npass}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      SALES_ASSISTANT_API_KEY: ${SALES_ASSISTANT_API_KEY:-}
+      ENRICHMENT_API_URL: ${ENRICHMENT_API_URL:-https://httpbin.org/anything}
+      ENRICHMENT_API_KEY: ${ENRICHMENT_API_KEY:-}
+      GOOGLE_SHEETS_INGEST_URL: ${GOOGLE_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      GOOGLE_SHEETS_INGEST_KEY: ${GOOGLE_SHEETS_INGEST_KEY:-}
+      LEAD_DB_INGEST_URL: ${LEAD_DB_INGEST_URL:-https://httpbin.org/anything}
+      LEAD_DB_INGEST_KEY: ${LEAD_DB_INGEST_KEY:-}
+      CUSTOMER_SERVICE_API_KEY: ${CUSTOMER_SERVICE_API_KEY:-}
+      HEALTHCARE_PROVIDER_NAME: ${HEALTHCARE_PROVIDER_NAME:-Vishu HealthCare}
+      SUPPORT_KB_JSON: ${SUPPORT_KB_JSON:-}
+      SUPPORT_DB_INGEST_URL: ${SUPPORT_DB_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_DB_INGEST_KEY: ${SUPPORT_DB_INGEST_KEY:-}
+      SUPPORT_SHEETS_INGEST_URL: ${SUPPORT_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_SHEETS_INGEST_KEY: ${SUPPORT_SHEETS_INGEST_KEY:-}
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongo
+      - n8n-postgres
+      - n8n-redis
+    volumes:
+      - ./:/repo
+
+  web:
+    image: node:20-alpine
+    container_name: saas-web
+    working_dir: /app
+    volumes:
+      - ./apps/web:/app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      AUTH0_SECRET: ${AUTH0_SECRET}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
+      APP_BASE_URL: ${APP_BASE_URL}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      API_BASE_URL: ${API_BASE_URL}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  n8n-postgres:
+    image: postgres:16-alpine
+    container_name: saas-n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${N8N_DB_NAME:-n8n}
+      POSTGRES_USER: ${N8N_DB_USER:-n8n}
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD:-n8npass}
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  n8n-redis:
+    image: redis:7-alpine
+    container_name: saas-n8n-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  n8n-main:
+    build:
+      context: ./services/packages/local-n8n
+    image: ${N8N_MAIN_IMAGE:-saas-n8n-local:latest}
+    container_name: saas-n8n-main
+    restart: unless-stopped
+    depends_on:
+      - n8n-postgres
+      - n8n-redis
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: ${N8N_DB_HOST:-n8n-postgres}
+      DB_POSTGRESDB_PORT: ${N8N_DB_PORT:-5432}
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-n8n}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:-n8npass}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: n8n-redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      N8N_PORT: 5678
+      N8N_HOST: localhost
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      PROMOTER_EMAIL: ${PROMOTER_EMAIL:-contact@vishusystems.com}
+      ENRICHMENT_API_URL: ${ENRICHMENT_API_URL:-https://httpbin.org/anything}
+      ENRICHMENT_API_KEY: ${ENRICHMENT_API_KEY:-}
+      GOOGLE_SHEETS_INGEST_URL: ${GOOGLE_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      GOOGLE_SHEETS_INGEST_KEY: ${GOOGLE_SHEETS_INGEST_KEY:-}
+      LEAD_DB_INGEST_URL: ${LEAD_DB_INGEST_URL:-https://httpbin.org/anything}
+      LEAD_DB_INGEST_KEY: ${LEAD_DB_INGEST_KEY:-}
+      HEALTHCARE_PROVIDER_NAME: ${HEALTHCARE_PROVIDER_NAME:-Vishu HealthCare}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-contact@vishusystems.com}
+      SUPPORT_KB_JSON: ${SUPPORT_KB_JSON:-}
+      SUPPORT_DB_INGEST_URL: ${SUPPORT_DB_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_DB_INGEST_KEY: ${SUPPORT_DB_INGEST_KEY:-}
+      SUPPORT_SHEETS_INGEST_URL: ${SUPPORT_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_SHEETS_INGEST_KEY: ${SUPPORT_SHEETS_INGEST_KEY:-}
+    command: start
+    ports:
+      - "5678:5678"
+
+  n8n-worker:
+    image: ${N8N_WORKER_IMAGE:-n8nio/n8n:latest}
+    container_name: saas-n8n-worker
+    restart: unless-stopped
+    depends_on:
+      - n8n-postgres
+      - n8n-redis
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: ${N8N_DB_HOST:-n8n-postgres}
+      DB_POSTGRESDB_PORT: ${N8N_DB_PORT:-5432}
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-n8n}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:-n8npass}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: n8n-redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      PROMOTER_EMAIL: ${PROMOTER_EMAIL:-contact@vishusystems.com}
+      ENRICHMENT_API_URL: ${ENRICHMENT_API_URL:-https://httpbin.org/anything}
+      ENRICHMENT_API_KEY: ${ENRICHMENT_API_KEY:-}
+      GOOGLE_SHEETS_INGEST_URL: ${GOOGLE_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      GOOGLE_SHEETS_INGEST_KEY: ${GOOGLE_SHEETS_INGEST_KEY:-}
+      LEAD_DB_INGEST_URL: ${LEAD_DB_INGEST_URL:-https://httpbin.org/anything}
+      LEAD_DB_INGEST_KEY: ${LEAD_DB_INGEST_KEY:-}
+      HEALTHCARE_PROVIDER_NAME: ${HEALTHCARE_PROVIDER_NAME:-Vishu HealthCare}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-contact@vishusystems.com}
+      SUPPORT_KB_JSON: ${SUPPORT_KB_JSON:-}
+      SUPPORT_DB_INGEST_URL: ${SUPPORT_DB_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_DB_INGEST_KEY: ${SUPPORT_DB_INGEST_KEY:-}
+      SUPPORT_SHEETS_INGEST_URL: ${SUPPORT_SHEETS_INGEST_URL:-https://httpbin.org/anything}
+      SUPPORT_SHEETS_INGEST_KEY: ${SUPPORT_SHEETS_INGEST_KEY:-}
+    command: worker
+
+volumes:
+  mongo_data:
+  n8n_postgres_data:

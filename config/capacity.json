@@ -1,0 +1,5 @@
+{
+  "standard": { "cpu": "500m", "memory": "512Mi" },
+  "professional": { "cpu": "1", "memory": "1Gi" },
+  "enterprise": { "cpu": "2", "memory": "2Gi" }
+}

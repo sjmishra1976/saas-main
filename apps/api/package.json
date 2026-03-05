@@ -1,0 +1,17 @@
+{
+  "name": "saas-api",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-oauth2-jwt-bearer": "^1.4.0",
+    "mongoose": "^8.10.0",
+    "morgan": "^1.10.0",
+    "nanoid": "^5.0.7"
+  }
+}

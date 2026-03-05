@@ -1,0 +1,289 @@
+{
+  "name": "SMB Sales - Lead Generation & Enrichment",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual_trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "campaign_name",
+              "value": "SMB Outbound Lead Sprint",
+              "type": "string"
+            },
+            {
+              "name": "icp_job_titles",
+              "value": "Founder,CEO,Head of Sales,Sales Manager,RevOps Manager",
+              "type": "string"
+            },
+            {
+              "name": "icp_industries",
+              "value": "IT Services,SaaS,Professional Services,E-commerce",
+              "type": "string"
+            },
+            {
+              "name": "icp_company_size",
+              "value": "10-500",
+              "type": "string"
+            },
+            {
+              "name": "icp_geo",
+              "value": "US,Canada,UK,India",
+              "type": "string"
+            },
+            {
+              "name": "promoter_email",
+              "value": "={{$env.PROMOTER_EMAIL || 'contact@vishusystems.com'}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_campaign_context",
+      "name": "Set ICP + Promoter Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const context = $input.first().json;\n\nconst leads = [\n  {\n    lead_source: 'linkedin_sales_nav',\n    first_name: 'Ava',\n    last_name: 'Miller',\n    job_title: 'Head of Sales',\n    company: 'Northwind Systems',\n    industry: 'SaaS',\n    company_size: '120',\n    country: 'US',\n    linkedin_url: 'https://linkedin.com/in/ava-miller',\n    website: 'https://northwind.example'\n  },\n  {\n    lead_source: 'apollo_io',\n    first_name: 'Liam',\n    last_name: 'Taylor',\n    job_title: 'RevOps Manager',\n    company: 'Brightline Commerce',\n    industry: 'E-commerce',\n    company_size: '85',\n    country: 'Canada',\n    linkedin_url: 'https://linkedin.com/in/liam-taylor',\n    website: 'https://brightline.example'\n  },\n  {\n    lead_source: 'website_chatbot',\n    first_name: 'Noah',\n    last_name: 'Patel',\n    job_title: 'Founder',\n    company: 'Skyforge Labs',\n    industry: 'IT Services',\n    company_size: '42',\n    country: 'India',\n    linkedin_url: 'https://linkedin.com/in/noah-patel',\n    website: 'https://skyforge.example'\n  }\n];\n\nreturn leads.map((lead) => ({\n  json: {\n    ...lead,\n    ...context,\n    captured_at: new Date().toISOString(),\n    enrichment_status: 'pending'\n  }\n}));"
+      },
+      "id": "generate_leads",
+      "name": "Generate/Collect Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.ENRICHMENT_API_URL || 'https://httpbin.org/anything'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{$env.ENRICHMENT_API_KEY ? 'Bearer ' + $env.ENRICHMENT_API_KEY : ''}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  first_name: $json.first_name,\n  last_name: $json.last_name,\n  full_name: `${$json.first_name} ${$json.last_name}`,\n  company: $json.company,\n  website: $json.website,\n  linkedin_url: $json.linkedin_url,\n  job_title: $json.job_title\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "enrich_lead",
+      "name": "Enrich Lead Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        280
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source = $json;\nconst body = source.body ?? source;\n\nconst enrichedEmail = body.email || body.work_email || '';\nconst enrichedPhone = body.phone || body.mobile || '';\nconst enrichedLinkedIn = body.linkedin_url || source.linkedin_url || '';\n\nreturn {\n  json: {\n    campaign_name: source.campaign_name,\n    promoter_email: source.promoter_email || 'contact@vishusystems.com',\n    lead_source: source.lead_source,\n    first_name: source.first_name,\n    last_name: source.last_name,\n    full_name: `${source.first_name || ''} ${source.last_name || ''}`.trim(),\n    job_title: source.job_title,\n    company: source.company,\n    industry: source.industry,\n    company_size: source.company_size,\n    country: source.country,\n    email: enrichedEmail,\n    phone: enrichedPhone,\n    linkedin_url: enrichedLinkedIn,\n    website: source.website,\n    icp_job_titles: source.icp_job_titles,\n    icp_industries: source.icp_industries,\n    icp_company_size: source.icp_company_size,\n    icp_geo: source.icp_geo,\n    enrichment_status: enrichedEmail || enrichedPhone ? 'enriched' : 'partial',\n    captured_at: source.captured_at,\n    processed_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "normalize_record",
+      "name": "Normalize Lead Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.GOOGLE_SHEETS_INGEST_URL || 'https://httpbin.org/anything'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{$env.GOOGLE_SHEETS_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store_sheets",
+      "name": "Store Lead in Google Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        180
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.LEAD_DB_INGEST_URL || 'https://httpbin.org/anything'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{$env.LEAD_DB_INGEST_KEY || ''}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store_db",
+      "name": "Store Lead in DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        380
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set ICP + Promoter Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set ICP + Promoter Context": {
+      "main": [
+        [
+          {
+            "node": "Generate/Collect Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate/Collect Leads": {
+      "main": [
+        [
+          {
+            "node": "Enrich Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Record": {
+      "main": [
+        [
+          {
+            "node": "Store Lead in Google Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Lead in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "sales-assistant-template"
+  },
+  "id": "sales-smb-lead-gen",
+  "tags": [
+    {
+      "name": "sales-assistant"
+    },
+    {
+      "name": "lead-generation"
+    },
+    {
+      "name": "data-enrichment"
+    }
+  ]
+}

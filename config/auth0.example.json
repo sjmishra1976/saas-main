@@ -1,0 +1,7 @@
+{
+  "domain": "your-tenant.us.auth0.com",
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
+  "audience": "https://api.yourcompany.com",
+  "issuerBaseURL": "https://your-tenant.us.auth0.com/"
+}

@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  api:
+    environment:
+      ENABLE_GKE_DEPLOY: ${ENABLE_GKE_DEPLOY:-true}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+      GCP_REGION: ${GCP_REGION}
+      GKE_CLUSTER_NAME: ${GKE_CLUSTER_NAME}
+      GCP_SERVICE_ACCOUNT_JSON: /secrets/gcp-sa.json
+    volumes:
+      - ${GCP_SERVICE_ACCOUNT_KEY}:/secrets/gcp-sa.json:ro

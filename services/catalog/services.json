@@ -1,0 +1,82 @@
+{
+  "services": [
+    {
+      "id": "sales-assistant",
+      "name": "Sales Assistant",
+      "description": "AI-powered sales enablement and lead assistance.",
+      "packages": [
+        {
+          "id": "sales-assistant-basic",
+          "name": "Basic",
+          "image": "sjmishra1976/sales-assistant-n8n:latest",
+          "run": {
+            "mode": "queue",
+            "containerPort": 5678,
+            "redisImage": "redis:7-alpine",
+            "ports": ["8080:8080"],
+            "env": {
+              "TENANT_ID": "${TENANT_ID}",
+              "ORG_ID": "${ORG_ID}",
+              "ORG_SLUG": "${ORG_SLUG}",
+              "DB_TYPE": "postgresdb",
+              "DB_POSTGRESDB_HOST": "${N8N_DB_HOST}",
+              "DB_POSTGRESDB_PORT": "${N8N_DB_PORT}",
+              "DB_POSTGRESDB_DATABASE": "${N8N_DB_NAME}",
+              "DB_POSTGRESDB_USER": "${N8N_DB_USER}",
+              "DB_POSTGRESDB_PASSWORD": "${N8N_DB_PASSWORD}",
+              "N8N_ENCRYPTION_KEY": "${N8N_ENCRYPTION_KEY}",
+              "API_KEY": "${SALES_ASSISTANT_API_KEY}",
+              "PROMOTER_EMAIL": "contact@vishusystems.com",
+              "ENRICHMENT_API_URL": "${ENRICHMENT_API_URL}",
+              "ENRICHMENT_API_KEY": "${ENRICHMENT_API_KEY}",
+              "GOOGLE_SHEETS_INGEST_URL": "${GOOGLE_SHEETS_INGEST_URL}",
+              "GOOGLE_SHEETS_INGEST_KEY": "${GOOGLE_SHEETS_INGEST_KEY}",
+              "LEAD_DB_INGEST_URL": "${LEAD_DB_INGEST_URL}",
+              "LEAD_DB_INGEST_KEY": "${LEAD_DB_INGEST_KEY}"
+            }
+          },
+          "docs": "docs/sales-assistant.md"
+        }
+      ]
+    },
+    {
+      "id": "customer-service-assistant",
+      "name": "Customer Service Assistant",
+      "description": "AI customer support workflows and ticket automation.",
+      "packages": [
+        {
+          "id": "customer-service-assistant-basic",
+          "name": "Basic",
+          "image": "sjmishra1976/customer-service-assistant-n8n:latest",
+          "run": {
+            "mode": "queue",
+            "containerPort": 5678,
+            "redisImage": "redis:7-alpine",
+            "ports": ["8081:8080"],
+            "env": {
+              "TENANT_ID": "${TENANT_ID}",
+              "ORG_ID": "${ORG_ID}",
+              "ORG_SLUG": "${ORG_SLUG}",
+              "DB_TYPE": "postgresdb",
+              "DB_POSTGRESDB_HOST": "${N8N_DB_HOST}",
+              "DB_POSTGRESDB_PORT": "${N8N_DB_PORT}",
+              "DB_POSTGRESDB_DATABASE": "${N8N_DB_NAME}",
+              "DB_POSTGRESDB_USER": "${N8N_DB_USER}",
+              "DB_POSTGRESDB_PASSWORD": "${N8N_DB_PASSWORD}",
+              "N8N_ENCRYPTION_KEY": "${N8N_ENCRYPTION_KEY}",
+              "API_KEY": "${CUSTOMER_SERVICE_API_KEY}",
+              "HEALTHCARE_PROVIDER_NAME": "${HEALTHCARE_PROVIDER_NAME}",
+              "SUPPORT_EMAIL": "contact@vishusystems.com",
+              "SUPPORT_KB_JSON": "${SUPPORT_KB_JSON}",
+              "SUPPORT_DB_INGEST_URL": "${SUPPORT_DB_INGEST_URL}",
+              "SUPPORT_DB_INGEST_KEY": "${SUPPORT_DB_INGEST_KEY}",
+              "SUPPORT_SHEETS_INGEST_URL": "${SUPPORT_SHEETS_INGEST_URL}",
+              "SUPPORT_SHEETS_INGEST_KEY": "${SUPPORT_SHEETS_INGEST_KEY}"
+            }
+          },
+          "docs": "docs/customer-service-assistant.md"
+        }
+      ]
+    }
+  ]
+}
