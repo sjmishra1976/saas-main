@@ -82,6 +82,61 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
 - Workflows can emit runtime activity logs back to API via:
   - `POST /orgs/:orgId/selections/:selectionId/activity` (header `x-service-activity-key`)
 
+## How GKE Deployment Works
+1. Enrollment
+- User enrolls a service for an organization with `service`, `package`, `instances`, and `capacityOption`.
+- Enrollment creates a `selection` record in MongoDB.
+
+2. Activation
+- User clicks Activate (`POST /orgs/:orgId/selections/:selectionId/activate`).
+- API loads the service package from `services/catalog/services.json` and selection details from Mongo.
+
+3. Capacity and replicas
+- `capacityOption` (`standard`, `professional`, `enterprise`) maps to CPU/memory in `config/capacity.json`.
+- Queue mode deployment uses:
+  - n8n main replicas: `1`
+  - n8n worker replicas: `instances` (minimum `1`)
+  - Redis replicas: `1`
+
+4. Manifest generation
+- API builds Kubernetes resources in `apps/api/src/lib/k8s.js`:
+  - Namespace
+  - Deployments (main/worker/redis)
+  - Services
+  - GCE Ingress
+- Endpoint format:
+  - `https://<serviceId>.<org-dns-slug>.<SERVICE_DOMAIN>`
+
+5. Apply to GKE
+- If `ENABLE_GKE_DEPLOY=true`, API executes deployment in `apps/api/src/lib/gke.js`:
+  - `gcloud auth activate-service-account`
+  - `gcloud container clusters get-credentials`
+  - `kubectl apply -f -`
+  - `kubectl wait --for=condition=available`
+- On failure, API rolls back and stores deployment error.
+
+6. Persist deployment state
+- On success selection is updated with:
+  - `status=active`
+  - `deploymentStatus=active`
+  - `endpointUrl`, `editorUrl`
+  - `lastDeploymentSpec`
+- On failure selection is updated with:
+  - `status=inactive`
+  - `deploymentStatus=failed`
+  - `lastDeploymentError`
+
+7. Deactivation
+- `POST /orgs/:orgId/selections/:selectionId/deactivate` cleans deployed resources by app label (when deploy mode is enabled) and sets selection to inactive.
+
+8. Required environment for GKE mode
+- `ENABLE_GKE_DEPLOY=true`
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `GKE_CLUSTER_NAME`
+- `GCP_SERVICE_ACCOUNT_JSON` (path inside API container to service-account key)
+- `SERVICE_DOMAIN`
+
 ## Build Service Images
 - Shared builder script:
   - `scripts/build_n8n_service_image.sh <service-dir> <image-ref> [--push]`
@@ -91,3 +146,7 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
 - Override target image:
   - `IMAGE_REF=us-west1-docker.pkg.dev/aiaas/saas/sales-assistant-n8n:latest scripts/build_sales_assistant.sh --push`
   - `IMAGE_REF=us-west1-docker.pkg.dev/aiaas/saas/customer-service-assistant-n8n:latest scripts/build_customer_service_assistant.sh --push`
+- dockerhub example
+  - `docker login`
+  - `IMAGE_REF=<dockerhub-username>/sales-assistant-n8n:latest scripts/build_sales_assistant.sh --push`
+  - `IMAGE_REF=<dockerhub-username>/customer-service-assistant-n8n:latest scripts/build_customer_service_assistant.sh --push`

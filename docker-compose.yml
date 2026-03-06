@@ -121,6 +121,7 @@ services:
       N8N_HOST: localhost
       N8N_PROTOCOL: http
       WEBHOOK_URL: http://localhost:5678/
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       PROMOTER_EMAIL: ${PROMOTER_EMAIL:-contact@vishusystems.com}
       ENRICHMENT_API_URL: ${ENRICHMENT_API_URL:-https://httpbin.org/anything}
       ENRICHMENT_API_KEY: ${ENRICHMENT_API_KEY:-}
@@ -159,6 +160,7 @@ services:
       EXECUTIONS_MODE: queue
       QUEUE_BULL_REDIS_HOST: n8n-redis
       QUEUE_BULL_REDIS_PORT: 6379
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       PROMOTER_EMAIL: ${PROMOTER_EMAIL:-contact@vishusystems.com}
       ENRICHMENT_API_URL: ${ENRICHMENT_API_URL:-https://httpbin.org/anything}
       ENRICHMENT_API_KEY: ${ENRICHMENT_API_KEY:-}
