@@ -146,6 +146,20 @@ A cloud-native, multi-tenant SaaS platform enabling organizations to provision a
 - Override target image:
   - `IMAGE_REF=us-west1-docker.pkg.dev/aiaas/saas/sales-assistant-n8n:latest scripts/build_sales_assistant.sh --push`
   - `IMAGE_REF=us-west1-docker.pkg.dev/aiaas/saas/customer-service-assistant-n8n:latest scripts/build_customer_service_assistant.sh --push`
+
+## Deploy Web + API to GKE
+- Production Dockerfiles:
+  - API: `apps/api/Dockerfile.prod`
+  - Web: `apps/web/Dockerfile`
+- Kubernetes manifests:
+  - `k8s/namespace.yaml`
+  - `k8s/configmap.yaml`
+  - `k8s/secret.yaml`
+  - `k8s/api.yaml`
+  - `k8s/web.yaml`
+  - `k8s/ingress.yaml`
+- End-to-end deploy steps and commands:
+  - `k8s/README.md`
 - dockerhub example
   - `docker login`
   - `IMAGE_REF=<dockerhub-username>/sales-assistant-n8n:latest scripts/build_sales_assistant.sh --push`

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-web
+  namespace: saas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saas-web
+  template:
+    metadata:
+      labels:
+        app: saas-web
+    spec:
+      containers:
+        - name: web
+          image: us-west1-docker.pkg.dev/aiaas/saas/web:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: saas-config
+            - secretRef:
+                name: saas-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-web
+  namespace: saas
+spec:
+  selector:
+    app: saas-web
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP

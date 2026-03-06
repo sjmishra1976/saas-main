@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saas-api
+  namespace: saas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saas-api
+  template:
+    metadata:
+      labels:
+        app: saas-api
+    spec:
+      containers:
+        - name: api
+          image: us-west1-docker.pkg.dev/aiaas/saas/api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: saas-config
+            - secretRef:
+                name: saas-secrets
+          env:
+            - name: GCP_SERVICE_ACCOUNT_JSON
+              value: /secrets/gcp-sa.json
+          volumeMounts:
+            - name: gcp-sa
+              mountPath: /secrets/gcp-sa.json
+              subPath: gcp-sa.json
+              readOnly: true
+      volumes:
+        - name: gcp-sa
+          secret:
+            secretName: saas-secrets
+            items:
+              - key: GCP_SERVICE_ACCOUNT_KEY_JSON
+                path: gcp-sa.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: saas-api
+  namespace: saas
+spec:
+  selector:
+    app: saas-api
+  ports:
+    - port: 4000
+      targetPort: 4000
+      protocol: TCP
