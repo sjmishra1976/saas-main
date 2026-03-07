@@ -11,7 +11,7 @@ data:
   AUTH0_AUDIENCE: "https://YOUR_API_AUDIENCE"
   SERVICE_DOMAIN: "yourdomain.com"
   ENABLE_GKE_DEPLOY: "true"
-  GCP_PROJECT_ID: "aiaas"
+  GCP_PROJECT_ID: "saas-main-vishusystems"
   GCP_REGION: "us-west1"
   GKE_CLUSTER_NAME: "vishu-aiaas"
   DEPLOY_WAIT_SECONDS: "180"
