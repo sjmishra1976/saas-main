@@ -207,28 +207,7 @@ export default async function OrgServicesPage({
                       </form>
                     ) : null}
 
-                    {status === "active" && selectionId && canAdmin ? (
-                      <form
-                        action={`/api/orgs/${orgId}/selections/${selectionId}/remove`}
-                        method="post"
-                      >
-                        <button
-                          type="submit"
-                          style={{
-                            border: "1px solid #c76373",
-                            background: "#ffe6ea",
-                            color: "#8d2132",
-                            padding: "0.35rem 0.75rem",
-                            borderRadius: "999px",
-                            cursor: "pointer"
-                          }}
-                        >
-                          Stop & Remove
-                        </button>
-                      </form>
-                    ) : null}
-
-                    {status === "active" && selectionId && !canAdmin ? (
+                    {status === "active" && selectionId ? (
                       <form
                         action={`/api/orgs/${orgId}/selections/${selectionId}/deactivate`}
                         method="post"
@@ -244,7 +223,28 @@ export default async function OrgServicesPage({
                             cursor: "pointer"
                           }}
                         >
-                          Stop Service
+                          Deactivate
+                        </button>
+                      </form>
+                    ) : null}
+
+                    {status === "active" && selectionId && canAdmin ? (
+                      <form
+                        action={`/api/orgs/${orgId}/selections/${selectionId}/remove`}
+                        method="post"
+                      >
+                        <button
+                          type="submit"
+                          style={{
+                            border: "1px solid #6d5c8a",
+                            background: "#efe9ff",
+                            color: "#4b3a6a",
+                            padding: "0.35rem 0.75rem",
+                            borderRadius: "999px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Remove
                         </button>
                       </form>
                     ) : null}

@@ -158,25 +158,6 @@ export default async function ServiceConsolePage({
                     Start Service
                   </button>
                 </form>
-              ) : canAdmin ? (
-                <form
-                  action={`/api/orgs/${orgId}/selections/${selectionId}/remove?next=/orgs/${orgId}/services/${selectionId}`}
-                  method="post"
-                >
-                  <button
-                    type="submit"
-                    style={{
-                      border: "1px solid #c76373",
-                      background: "#ffe6ea",
-                      color: "#8d2132",
-                      padding: "0.45rem 0.85rem",
-                      borderRadius: "999px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Stop & Remove
-                  </button>
-                </form>
               ) : (
                 <form
                   action={`/api/orgs/${orgId}/selections/${selectionId}/deactivate?next=/orgs/${orgId}/services/${selectionId}`}
@@ -193,10 +174,30 @@ export default async function ServiceConsolePage({
                       cursor: "pointer"
                     }}
                   >
-                    Stop Service
+                    Deactivate
                   </button>
                 </form>
               )}
+              {selection.status === "active" && canAdmin ? (
+                <form
+                  action={`/api/orgs/${orgId}/selections/${selectionId}/remove?next=/orgs/${orgId}/services/${selectionId}`}
+                  method="post"
+                >
+                  <button
+                    type="submit"
+                    style={{
+                      border: "1px solid #6d5c8a",
+                      background: "#efe9ff",
+                      color: "#4b3a6a",
+                      padding: "0.45rem 0.85rem",
+                      borderRadius: "999px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Remove
+                  </button>
+                </form>
+              ) : null}
 
               {editorUrl ? (
                 <form action={editorUrl} method="get" target="_blank">

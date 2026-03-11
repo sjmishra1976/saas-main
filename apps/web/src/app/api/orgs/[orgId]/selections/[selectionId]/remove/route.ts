@@ -12,11 +12,11 @@ export async function POST(
   const url = new URL(req.url);
   const backTo = url.searchParams.get("next") || `/orgs/${orgId}`;
 
-  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
 
   const deactRes = await fetchFromApi(
     `/orgs/${orgId}/selections/${selectionId}/deactivate`,
-    { method: "POST", headers }
+    { method: "POST", ...(headers ? { headers } : {}) }
   );
 
   if (!deactRes.ok && deactRes.status !== 404) {
@@ -29,7 +29,7 @@ export async function POST(
 
   const delRes = await fetchFromApi(`/orgs/${orgId}/selections/${selectionId}`, {
     method: "DELETE",
-    headers
+    ...(headers ? { headers } : {})
   });
 
   if (!delRes.ok) {
