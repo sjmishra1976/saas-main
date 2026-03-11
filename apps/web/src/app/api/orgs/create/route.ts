@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAppUrl } from "@/lib/appUrl";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 import { deriveOwnerPrefix } from "@/lib/ownerPrefix";
@@ -28,5 +29,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Auth required" }, { status: 401 });
   }
 
-  return NextResponse.redirect(new URL("/orgs", req.url));
+  return NextResponse.redirect(toAppUrl("/orgs", req));
 }

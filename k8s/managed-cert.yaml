@@ -1,0 +1,9 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: saas-cert
+  namespace: saas
+spec:
+  domains:
+    - app.vishuaiaas.com
+    - api.vishuaiaas.com

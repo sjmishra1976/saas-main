@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAppUrl } from "@/lib/appUrl";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 
@@ -33,5 +34,5 @@ export async function POST(
     return NextResponse.json({ error: "Failed to enroll" }, { status: 400 });
   }
 
-  return NextResponse.redirect(new URL(`/orgs/${orgId}`, req.url));
+  return NextResponse.redirect(toAppUrl(`/orgs/${orgId}`, req));
 }

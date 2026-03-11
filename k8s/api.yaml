@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: us-west1-docker.pkg.dev/aiaas/saas/api:latest
+          image: docker.io/sjmishra1976/saas-api@sha256:b7eee44742b670388e2c5c653428634c55bc0040c8eecfe9a1b5505be72678fa
           imagePullPolicy: Always
           ports:
             - containerPort: 4000
@@ -52,6 +52,9 @@ kind: Service
 metadata:
   name: saas-api
   namespace: saas
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    beta.cloud.google.com/backend-config: '{"default":"saas-api-backendconfig"}'
 spec:
   selector:
     app: saas-api

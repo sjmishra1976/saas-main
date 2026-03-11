@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAppUrl } from "@/lib/appUrl";
 
 function withSelectedOrgCookie(res: NextResponse, orgId: string) {
   res.cookies.set("selected_org_id", orgId, {
@@ -16,7 +17,8 @@ export async function GET(
   const { orgId } = await context.params;
   const nextUrl = new URL(req.url).searchParams.get("next") || `/orgs/${orgId}`;
 
-  const res = NextResponse.redirect(new URL(nextUrl, req.url));
+  const safeNext = nextUrl.startsWith("/") ? nextUrl : `/orgs/${orgId}`;
+  const res = NextResponse.redirect(toAppUrl(safeNext, req));
   return withSelectedOrgCookie(res, orgId);
 }
 

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: sjmishra1976/web:latest
+          image: docker.io/sjmishra1976/saas-web@sha256:8d8f3b8f8c1bf12addb20016189ebdda2a3c640fefd5d18ca35e73b07d9df4e2
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
@@ -31,12 +31,17 @@ spec:
                 name: saas-config
             - secretRef:
                 name: saas-secrets
+          env:
+            - name: PORT
+              value: "3000"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: saas-web
   namespace: saas
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
   selector:
     app: saas-web

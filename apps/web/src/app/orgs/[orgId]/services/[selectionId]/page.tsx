@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 import SelectedOrgSync from "@/components/SelectedOrgSync";
-import { resolveCanOperateServices } from "@/lib/roleAccess";
+import { resolveCanOperateServices, resolveCanAdminOrgs } from "@/lib/roleAccess";
 
 async function fetchWithToken(path: string) {
   const { token: accessToken } = await auth0.getAccessToken();
@@ -42,6 +42,7 @@ export default async function ServiceConsolePage({
     );
   }
   const canOperate = await resolveCanOperateServices(session.user);
+  const canAdmin = await resolveCanAdminOrgs(session.user);
 
   const servicesRes = await fetchWithToken(`/orgs/${orgId}/services`);
   if (!servicesRes.ok) {
@@ -155,6 +156,25 @@ export default async function ServiceConsolePage({
                     }}
                   >
                     Start Service
+                  </button>
+                </form>
+              ) : canAdmin ? (
+                <form
+                  action={`/api/orgs/${orgId}/selections/${selectionId}/remove?next=/orgs/${orgId}/services/${selectionId}`}
+                  method="post"
+                >
+                  <button
+                    type="submit"
+                    style={{
+                      border: "1px solid #c76373",
+                      background: "#ffe6ea",
+                      color: "#8d2132",
+                      padding: "0.45rem 0.85rem",
+                      borderRadius: "999px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Stop & Remove
                   </button>
                 </form>
               ) : (

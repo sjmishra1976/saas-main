@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 import SelectedOrgSync from "@/components/SelectedOrgSync";
-import { resolveCanOperateServices } from "@/lib/roleAccess";
+import { resolveCanOperateServices, resolveCanAdminOrgs } from "@/lib/roleAccess";
 
 async function fetchWithToken(path: string) {
   const { token: accessToken } = await auth0.getAccessToken();
@@ -29,6 +29,7 @@ export default async function OrgServicesPage({
     );
   }
   const canOperate = await resolveCanOperateServices(session.user);
+  const canAdmin = await resolveCanAdminOrgs(session.user);
 
   const servicesRes = await fetchWithToken(`/orgs/${orgId}/services`);
   const services = servicesRes.ok
@@ -206,7 +207,28 @@ export default async function OrgServicesPage({
                       </form>
                     ) : null}
 
-                    {status === "active" && selectionId ? (
+                    {status === "active" && selectionId && canAdmin ? (
+                      <form
+                        action={`/api/orgs/${orgId}/selections/${selectionId}/remove`}
+                        method="post"
+                      >
+                        <button
+                          type="submit"
+                          style={{
+                            border: "1px solid #c76373",
+                            background: "#ffe6ea",
+                            color: "#8d2132",
+                            padding: "0.35rem 0.75rem",
+                            borderRadius: "999px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Stop & Remove
+                        </button>
+                      </form>
+                    ) : null}
+
+                    {status === "active" && selectionId && !canAdmin ? (
                       <form
                         action={`/api/orgs/${orgId}/selections/${selectionId}/deactivate`}
                         method="post"

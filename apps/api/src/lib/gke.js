@@ -61,7 +61,7 @@ export async function applyManifests({
   await setupGkeContext({ projectId, region, clusterName, serviceAccountKeyPath });
 
   const yamlDocs = manifests.map((m) => JSON.stringify(m)).join("\n---\n");
-  await runWithStdin("kubectl", ["apply", "-f", "-"], yamlDocs);
+  await runWithStdin("kubectl", ["apply", "--validate=false", "-f", "-"], yamlDocs);
 
   if (namespace && deploymentName) {
     await execFileAsync("kubectl", [

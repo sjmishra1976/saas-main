@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAppUrl } from "@/lib/appUrl";
 import { auth0 } from "@/lib/auth0";
 import { fetchFromApi } from "@/lib/apiBase";
 
@@ -24,5 +25,5 @@ export async function POST(
     );
   }
 
-  return NextResponse.redirect(new URL("/orgs", req.url));
+  return NextResponse.redirect(toAppUrl("/orgs", req));
 }

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: saas-gateway
+  namespace: gateway
+  annotations:
+    networking.gke.io/certmap: vishuaiaas-cert-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.vishuaiaas.com"
+      allowedRoutes:
+        namespaces:
+          from: All

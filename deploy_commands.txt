@@ -1,0 +1,279 @@
+# 0) Vars
+export PROJECT_ID="saas-main-vishusystems"
+export REGION="us-west1"
+export CLUSTER="vishu-aiaas"
+export NAMESPACE="saas"
+export DOMAIN="vishuaiaas.com"
+export SA_NAME="saas-gke-deployer"
+export SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+export KEY_FILE="$HOME/.gcp-keys/gcp-sa.json"
+
+# 1) Auth + project
+gcloud auth login
+gcloud config set project "$PROJECT_ID"
+
+# 2) Ensure cluster exists (skip if already created)
+gcloud container clusters create-auto "$CLUSTER" \
+  --project="$PROJECT_ID" \
+  --region="$REGION" \
+  --release-channel=regular
+
+# 2.5) Install plugin using command: gcloud components install gke-gcloud-auth-plugin
+
+# 3) Configure kubectl
+gcloud container clusters get-credentials "$CLUSTER" \
+  --region "$REGION" \
+  --project "$PROJECT_ID"
+
+# 4) Create service account for API-driven GKE deploys
+gcloud iam service-accounts create "$SA_NAME" \
+  --display-name="SaaS GKE Deployer" || true
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/container.admin"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/compute.loadBalancerAdmin"
+
+# Optional if you want to manage Cloud DNS via gcloud
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/dns.admin"
+
+# 5) Generate SA key file
+mkdir -p "$(dirname "$KEY_FILE")"
+gcloud iam service-accounts keys create "$KEY_FILE" \
+  --iam-account="$SA_EMAIL"
+chmod 600 "$KEY_FILE"
+
+# 6) Reserve global static IP for ingress
+gcloud compute addresses create saas-ingress-ip \
+  --global \
+  --project "$PROJECT_ID" || true
+
+export INGRESS_IP=$(gcloud compute addresses describe saas-ingress-ip \
+  --global \
+  --project "$PROJECT_ID" \
+  --format='value(address)')
+echo "INGRESS_IP=$INGRESS_IP"
+
+# 7) Register domain in Cloud Domains (if not already registered)
+# (UI step typically; skip if already owned)
+# https://console.cloud.google.com/net-services/domains/registrations
+
+# 8) Cloud DNS public zone (if not already created)
+gcloud dns managed-zones create vishuaiaas-zone \
+  --dns-name="${DOMAIN}." \
+  --description="vishuaiaas public zone" \
+  --project "$PROJECT_ID" || true
+
+# 9) Show nameservers and set these at domain registrar
+gcloud dns managed-zones describe vishuaiaas-zone \
+  --project "$PROJECT_ID" \
+  --format="value(nameServers)"
+
+# 10) Create DNS A records to ingress IP
+gcloud dns record-sets create "app.${DOMAIN}." \
+  --zone="vishuaiaas-zone" \
+  --type="A" \
+  --ttl="300" \
+  --rrdatas="$INGRESS_IP" \
+  --project "$PROJECT_ID" || true
+
+gcloud dns record-sets create "api.${DOMAIN}." \
+  --zone="vishuaiaas-zone" \
+  --type="A" \
+  --ttl="300" \
+  --rrdatas="$INGRESS_IP" \
+  --project "$PROJECT_ID" || true
+
+# 11) Build/push images (Docker Hub example)
+docker login
+docker build -t <dockerhub-username>/saas-api:latest -f apps/api/Dockerfile.prod .
+docker build -t <dockerhub-username>/saas-web:latest -f apps/web/Dockerfile .
+docker push <dockerhub-username>/saas-api:latest
+docker push <dockerhub-username>/saas-web:latest
+
+# 12) Patch k8s image refs to your Docker Hub repo
+# edit files:
+# k8s/api.yaml -> image: <dockerhub-username>/saas-api:latest
+# k8s/web.yaml -> image: <dockerhub-username>/saas-web:latest
+
+# 13) Create namespace first
+kubectl apply -f k8s/namespace.yaml
+
+# 14) Create docker pull secret (only if Docker Hub images are private)
+kubectl -n "$NAMESPACE" create secret docker-registry dockerhub-creds \
+  --docker-server=https://index.docker.io/v1/ \
+  --docker-username=<dockerhub-username> \
+  --docker-password=<dockerhub-access-token> \
+  --docker-email=<your-email> || true
+
+
+# Note: you can use kubectl apply -f using secret.yaml except sa.json to avoid copying json to secret.yaml, use below command after other secrets created
+kubectl -n saas create secret generic saas-secrets \
+  --from-file=GCP_SERVICE_ACCOUNT_KEY_JSON=$HOME/.gcp-keys/gcp-sa.json \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+If you wish directly doing for other key can use below coammnd also
+
+# 15) Create app secret from real values + SA key
+kubectl -n "$NAMESPACE" create secret generic saas-secrets \
+  --from-literal=AUTH0_DOMAIN="your-tenant.us.auth0.com" \
+  --from-literal=AUTH0_CLIENT_ID="your-client-id" \
+  --from-literal=AUTH0_CLIENT_SECRET="your-client-secret" \
+  --from-literal=AUTH0_SECRET="your-long-random-secret" \
+  --from-literal=MONGODB_URI="your-mongodb-uri" \
+  --from-literal=N8N_DB_PASSWORD="your-n8n-db-password" \
+  --from-literal=N8N_ENCRYPTION_KEY="your-n8n-encryption-key" \
+  --from-literal=SERVICE_ACTIVITY_INGEST_KEY="your-activity-ingest-key" \
+  --from-file=GCP_SERVICE_ACCOUNT_KEY_JSON="$KEY_FILE" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 16) Update configmap values (domains/auth audience/base URLs), then apply
+kubectl apply -f k8s/configmap.yaml
+
+# 17) Apply workloads + cert + ingress
+kubectl apply -f k8s/mongo.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/api.yaml
+kubectl apply -f k8s/web.yaml
+kubectl apply -f k8s/managed-cert.yaml
+kubectl apply -f k8s/ingress.yaml
+
+# 18) Verify
+kubectl -n "$NAMESPACE" get pods
+kubectl -n "$NAMESPACE" get svc
+kubectl -n "$NAMESPACE" get ingress
+kubectl -n "$NAMESPACE" get managedcertificate
+kubectl -n "$NAMESPACE" describe managedcertificate saas-cert
+
+
+# 19) Troubleshooting check pods
+
+kubectl -n saas describe pod saas-api-dd9f6fb6-hzw25s | tail -n 40
+kubectl -n saas describe pod saas-web-6686c4bcbb-wg25s | tail -n 40
+
+Also to check pod logs:
+
+kubectl -n saas logs deploy/saas-api --tail=100
+
+# 20) apply again and restart and get status
+kubectl apply -f k8s/api.yaml
+kubectl apply -f k8s/web.yaml
+kubectl -n saas rollout restart deploy/saas-api deploy/saas-web
+kubectl -n saas get pods -w
+
+# 22) Rollout restart after build and update platform to linux amd, apple docker hub images were arm
+
+cd /Users/santoshkumarmishra/ws/vishu_saas_solns_ws/saas-main
+
+docker buildx create --use --name gkebuilder || docker buildx use gkebuilder
+docker buildx inspect --bootstrap
+
+docker buildx build --platform linux/amd64 \
+  -t sjmishra1976/saas-api:latest \
+  -f apps/api/Dockerfile.prod \
+  --push .
+
+docker buildx build --platform linux/amd64 \
+  -t sjmishra1976/saas-web:latest \
+  -f apps/web/Dockerfile \
+  --push .
+
+to insepect image use:
+docker buildx imagetools inspect sjmishra1976/saas-web:latest
+docker buildx imagetools inspect sjmishra1976/saas-api:latest
+
+Alternative command, directly using image digest for deploy - instead of using through yaml entry:
+
+kubectl -n saas set image deployment/saas-api \
+  api=docker.io/sjmishra1976/saas-api@sha256:72a8ed2c7df4ccbbc06d8f3ea41fa477680f4ad87b432d28aa12007c3790575d
+
+OR do below
+
+kubectl apply -f k8s/api.yaml
+kubectl apply -f k8s/web.yaml
+kubectl -n saas rollout restart deploy/saas-api deploy/saas-web
+kubectl -n saas rollout status deploy/saas-api
+kubectl -n saas rollout status deploy/saas-web
+
+#23) checking logs
+kubectl -n saas logs deploy/saas-api -f --tail=200
+kubectl -n saas logs deploy/saas-web --tail=200
+
+kubectl -n saas get pods -l app=saas-api
+kubectl -n saas describe pod -l app=saas-api | tail -n 80
+
+checking directly api
+TOKEN="<auth0_access_token>"
+curl -i -X POST "https://api.vishuaiaas.com/orgs/<orgId>/selections/<selectionId>/activate" \
+  -H "Authorization: Bearer $TOKEN"
+
+kubectl -n saas logs deploy/saas-api --tail=500 | egrep -i "activate|error|kubectl|gcloud|forbidden|timeout"
+kubectl get ns
+---The post string in grep
+kubectl get deploy,pods,svc,ing -A | egrep "sales|assistant|n8n|69ae0573|69af3f07" 
+
+#24) Re- Build service package with platform
+ Rebuild/push service images as linux/amd64
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+  -t sjmishra1976/sales-assistant-n8n:latest \
+  -f services/packages/sales-assistant/Dockerfile services/packages/sales-assistant --push
+
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+  -t sjmishra1976/customer-service-assistant-n8n:latest \
+  -f services/packages/customer-service-assistant/Dockerfile services/packages/customer-service-assistant --push
+
+#25) How to delete manually create service pods
+NS=auth0-698808bf3da0864e7c7f5e6e-sjmishra1976-organization1 ( replace with actual namespace, get namespace with kubectl get ns )
+
+# 25.1) Ensure image is truly amd64
+docker buildx imagetools inspect sjmishra1976/sales-assistant-n8n:latest
+
+# 25.2) Delete leftover runtime resources from failed attempt
+kubectl -n "$NS" delete deploy sjmishra1976-organization1-sales-assistant-worker sjmishra1976-organization1-sales-assistant-redis --ignore-not-found
+kubectl -n "$NS" delete svc sjmishra1976-organization1-sales-assistant sjmishra1976-organization1-sales-assistant-redis --ignore-not-found
+kubectl -n "$NS" delete ingress sjmishra1976-organization1-sales-assistant --ignore-not-found
+
+kubectl -n "$NS" get deploy,pods,svc,ing -w
+
+
+#26) Another way command line to set container image with platform linux
+docker buildx build --platform linux/amd64 -t sjmishra1976/saas-api:latest -f apps/api/Dockerfile.prod --push .
+kubectl -n saas set image deployment/saas-api \
+  api=docker.io/sjmishra1976/saas-api@sha256:<NEW_DIGEST>
+
+kubectl -n saas rollout status deployment/saas-api
+kubectl -n saas describe pod -l app=saas-api | grep -E "Image:|Image ID:"
+
+#27) connecting to mongo and updating the mongodb:
+kubectl -n saas exec -it deploy/mongo -- mongosh
+use saas_main
+// Mark inactive + clear endpoint/editor
+db.selections.updateOne(
+  { _id: ObjectId("69af3f07fb63e297e274aabb") },
+  { $set: { status: "inactive", deploymentStatus: "pending", endpointUrl: "", editorUrl: "" } }
+)
+// optional: verify
+db.selections.find({ _id: ObjectId("<selectionId>") })
+
+#28) go to saasapi pod and container and check db name in env
+POD=$(kubectl -n "$NS" get pod -l app=sjmishra1976-default-organization-sales-assistant,role=main -o jsonpath='{.items[0].metadata.name}')
+kubectl -n "$NS" exec -it "$POD" -c sales-assistant-main -- printenv | grep DB_POSTGRESDB_DATABASE
+
+#29) create n8n postgress db first time
+# Try connecting to postgres DB (if exists)
+#kubectl -n saas exec -it deploy/postgres -- psql -U n8n -d postgres -c '\l'
+#kubectl -n saas exec -it deploy/postgres -- psql -U n8n -d postgres -c 'CREATE DATABASE n8n;'
+
+# When new
+kubectl -n saas rollout restart deploy/postgres ( restart may be needed)
+kubectl -n saas exec -it deploy/postgres -- psql -U n8n -d template1 -c '\l'
+kubectl -n saas exec -it deploy/postgres -- psql -U n8n -d template1 -c 'CREATE DATABASE n8n;'
+# Verify
+kubectl -n saas exec -it deploy/postgres -- psql -U n8n -d n8n -c '\l'
+After that, activation should be able to create the tenant DBs.
+

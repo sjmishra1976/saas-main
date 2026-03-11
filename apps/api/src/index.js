@@ -6,6 +6,7 @@ import { loadCatalog, findPackage } from "./lib/catalog.js";
 import { connectDb } from "./lib/db.js";
 import { ActivityLog, Org, Selection } from "./lib/models.js";
 import { loadCapacityConfig, buildK8sSpec } from "./lib/k8s.js";
+import { ensureDatabaseExists, getTenantDbName } from "./lib/postgres.js";
 import {
   applyManifests,
   rollbackManifests,
@@ -466,6 +467,7 @@ app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (re
     });
   }
   const namespace = slugify(`${userSub || org.ownerUserId}-${org.slug}`);
+  const dbName = getTenantDbName(org.slug);
   const spec = buildK8sSpec({
     org,
     service,
@@ -473,74 +475,106 @@ app.post("/orgs/:orgId/selections/:selectionId/activate", requireAuth, async (re
     packageDef: pkg,
     domain,
     capacity,
-    namespace
+    namespace,
+    dbName
   });
 
   const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
 
-  try {
-    if (enableDeploy) {
-      await applyManifests({
-        manifests: spec.manifests,
-        projectId: process.env.GCP_PROJECT_ID,
-        region: process.env.GCP_REGION,
-        clusterName: process.env.GKE_CLUSTER_NAME,
-        serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON,
-        namespace,
-        deploymentName: spec.primaryDeploymentName,
-        waitTimeoutSeconds: Number(process.env.DEPLOY_WAIT_SECONDS || 120)
-      });
-    }
+  await Selection.findByIdAndUpdate(selectionId, {
+    status: enableDeploy ? "provisioning" : "active",
+    deploymentStatus: enableDeploy ? "provisioning" : "active",
+    endpointUrl: spec.endpoint,
+    editorUrl: spec.endpoint,
+    lastDeploymentSpec: spec,
+    lastDeploymentError: ""
+  });
+  await writeActivity({
+    orgId,
+    selectionId,
+    eventType: "activation_started",
+    message: "Service activation started",
+    metadata: { endpoint: spec.endpoint }
+  });
 
-    await Selection.findByIdAndUpdate(selectionId, {
-      status: "active",
-      deploymentStatus: enableDeploy ? "active" : "provisioning",
-      endpointUrl: spec.endpoint,
-      editorUrl: spec.endpoint,
-      lastDeploymentSpec: spec,
-      lastDeploymentError: ""
-    });
-    await writeActivity({
-      orgId,
-      selectionId,
-      eventType: "activated",
-      message: "Service activated successfully",
-      metadata: {
-        endpoint: spec.endpoint,
-        deploymentStatus: enableDeploy ? "active" : "provisioning"
-      }
-    });
-  } catch (err) {
-    if (enableDeploy) {
-      try {
-        await rollbackManifests({
-          namespace,
-          deploymentName: spec.primaryDeploymentName
-        });
-      } catch {}
-    }
-    const errorMessage = err?.message || String(err);
-    await Selection.findByIdAndUpdate(selectionId, {
-      status: "inactive",
-      deploymentStatus: "failed",
-      lastDeploymentSpec: spec,
-      lastDeploymentError: errorMessage
-    });
-    await writeActivity({
-      orgId,
-      selectionId,
-      eventType: "activation_failed",
-      message: "Service activation failed",
-      metadata: { error: errorMessage }
-    });
-    return res.status(500).json({
-      error: "deployment failed",
-      details: errorMessage
-    });
+  if (!enableDeploy) {
+    return res.json({ ok: true, status: "active", endpoint: spec.endpoint });
   }
 
-  res.json({
+  setImmediate(() => {
+    (async () => {
+      try {
+        await ensureDatabaseExists({
+          dbName,
+          host: process.env.N8N_DB_HOST,
+          port: Number(process.env.N8N_DB_PORT || 5432),
+          user: process.env.N8N_DB_USER,
+          password: process.env.N8N_DB_PASSWORD,
+          adminDb: process.env.N8N_DB_ADMIN_DB
+        });
+        await applyManifests({
+          manifests: spec.manifests,
+          projectId: process.env.GCP_PROJECT_ID,
+          region: process.env.GCP_REGION,
+          clusterName: process.env.GKE_CLUSTER_NAME,
+          serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON,
+          namespace,
+          deploymentName: spec.primaryDeploymentName,
+          waitTimeoutSeconds: Number(process.env.DEPLOY_WAIT_SECONDS || 120)
+        });
+
+        await Selection.findByIdAndUpdate(selectionId, {
+          status: "active",
+          deploymentStatus: "active",
+          endpointUrl: spec.endpoint,
+          editorUrl: spec.endpoint,
+          lastDeploymentSpec: spec,
+          lastDeploymentError: ""
+        });
+        await writeActivity({
+          orgId,
+          selectionId,
+          eventType: "activated",
+          message: "Service activated successfully",
+          metadata: { endpoint: spec.endpoint, deploymentStatus: "active" }
+        });
+      } catch (err) {
+        try {
+          await rollbackManifests({
+            namespace,
+            deploymentName: spec.primaryDeploymentName
+          });
+        } catch {}
+        const errorMessage = err?.message || String(err);
+        console.error("activate failed", {
+          orgId,
+          selectionId,
+          namespace,
+          deployment: spec.primaryDeploymentName,
+          error: errorMessage
+        });
+        await Selection.findByIdAndUpdate(selectionId, {
+          status: "inactive",
+          deploymentStatus: "failed",
+          lastDeploymentSpec: spec,
+          lastDeploymentError: errorMessage
+        });
+        await writeActivity({
+          orgId,
+          selectionId,
+          eventType: "activation_failed",
+          message: "Service activation failed",
+          metadata: { error: errorMessage }
+        });
+      }
+    })().catch((err) => {
+      console.error("activate background task failed", err);
+    });
+  });
+
+  return res.status(202).json({
     ok: true,
+    status: "provisioning",
     endpoint: spec.endpoint,
     spec
   });
@@ -563,45 +597,80 @@ app.post("/orgs/:orgId/selections/:selectionId/deactivate", requireAuth, async (
   if (!selection) return res.status(404).json({ error: "selection not found" });
 
   const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
-  if (enableDeploy) {
-    const namespace = selection.lastDeploymentSpec?.namespace;
-    const appName = selection.lastDeploymentSpec?.name;
-    if (namespace && appName) {
-      try {
-        await cleanupByAppLabel({
-          namespace,
-          appName,
-          projectId: process.env.GCP_PROJECT_ID,
-          region: process.env.GCP_REGION,
-          clusterName: process.env.GKE_CLUSTER_NAME,
-          serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON
-        });
-      } catch (err) {
-        return res.status(500).json({
-          error: "deactivation failed",
-          details: err?.message || String(err)
-        });
-      }
-    }
-  }
-
-  const updated = await Selection.findByIdAndUpdate(
+  await Selection.findByIdAndUpdate(
     selectionId,
     {
-      status: "inactive",
-      deploymentStatus: "pending"
+      status: enableDeploy ? "deprovisioning" : "inactive",
+      deploymentStatus: enableDeploy ? "deprovisioning" : "pending"
     },
     { new: true }
   ).lean();
   await writeActivity({
     orgId,
     selectionId,
-    eventType: "deactivated",
-    message: "Service stopped successfully",
-    metadata: { deploymentStatus: "pending" }
+    eventType: "deactivation_started",
+    message: "Service deactivation started",
+    metadata: { deploymentStatus: enableDeploy ? "deprovisioning" : "pending" }
   });
 
-  res.json({ ok: true, selection: updated });
+  if (!enableDeploy) {
+    return res.json({ ok: true, status: "inactive" });
+  }
+
+  setImmediate(() => {
+    (async () => {
+      const namespace = selection.lastDeploymentSpec?.namespace;
+      const appName = selection.lastDeploymentSpec?.name;
+      if (namespace && appName) {
+        try {
+          await cleanupByAppLabel({
+            namespace,
+            appName,
+            projectId: process.env.GCP_PROJECT_ID,
+            region: process.env.GCP_REGION,
+            clusterName: process.env.GKE_CLUSTER_NAME,
+            serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON
+          });
+          await Selection.findByIdAndUpdate(selectionId, {
+            status: "inactive",
+            deploymentStatus: "pending"
+          });
+          await writeActivity({
+            orgId,
+            selectionId,
+            eventType: "deactivated",
+            message: "Service stopped successfully",
+            metadata: { deploymentStatus: "pending" }
+          });
+        } catch (err) {
+          const errorMessage = err?.message || String(err);
+          console.error("deactivate failed", {
+            orgId,
+            selectionId,
+            namespace,
+            appName,
+            error: errorMessage
+          });
+          await Selection.findByIdAndUpdate(selectionId, {
+            status: "active",
+            deploymentStatus: "active",
+            lastDeploymentError: errorMessage
+          });
+          await writeActivity({
+            orgId,
+            selectionId,
+            eventType: "deactivation_failed",
+            message: "Service deactivation failed",
+            metadata: { error: errorMessage }
+          });
+        }
+      }
+    })().catch((err) => {
+      console.error("deactivate background task failed", err);
+    });
+  });
+
+  return res.status(202).json({ ok: true, status: "deprovisioning" });
 });
 
 app.delete("/orgs/:orgId/selections/:selectionId", requireAuth, async (req, res) => {
@@ -617,44 +686,83 @@ app.delete("/orgs/:orgId/selections/:selectionId", requireAuth, async (req, res)
     return res.status(403).json({ error: "forbidden" });
   }
 
-  const deleted = await Selection.findOneAndDelete({
-    _id: selectionId,
-    orgId
-  });
-  if (!deleted) {
+  const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
+  const selection = await Selection.findOne({ _id: selectionId, orgId }).lean();
+  if (!selection) {
     return res.status(404).json({ error: "selection not found" });
   }
+
+  if (!enableDeploy) {
+    await Selection.deleteOne({ _id: selectionId, orgId });
+    await writeActivity({
+      orgId,
+      selectionId,
+      eventType: "selection_deleted",
+      message: "Service selection removed",
+      metadata: { serviceId: selection.serviceId, packageId: selection.packageId }
+    });
+    return res.json({ ok: true });
+  }
+
+  await Selection.findByIdAndUpdate(selectionId, {
+    status: "removing",
+    deploymentStatus: "deprovisioning"
+  });
   await writeActivity({
     orgId,
     selectionId,
-    eventType: "selection_deleted",
-    message: "Service selection removed",
-    metadata: { serviceId: deleted.serviceId, packageId: deleted.packageId }
+    eventType: "removal_started",
+    message: "Service removal started",
+    metadata: { serviceId: selection.serviceId, packageId: selection.packageId }
   });
 
-  const enableDeploy = process.env.ENABLE_GKE_DEPLOY === "true";
-  if (enableDeploy) {
-    const namespace = deleted.lastDeploymentSpec?.namespace;
-    const appName = deleted.lastDeploymentSpec?.name;
-    if (namespace && appName) {
-      try {
-        await cleanupByAppLabel({
-          namespace,
-          appName,
-          projectId: process.env.GCP_PROJECT_ID,
-          region: process.env.GCP_REGION,
-          clusterName: process.env.GKE_CLUSTER_NAME,
-          serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON
-        });
-      } catch (err) {
-        return res.status(500).json({
-          error: "selection removed but failed to cleanup deployed instance",
-          details: err?.message || String(err)
-        });
+  setImmediate(() => {
+    (async () => {
+      const namespace = selection.lastDeploymentSpec?.namespace;
+      const appName = selection.lastDeploymentSpec?.name;
+      if (namespace && appName) {
+        try {
+          await cleanupByAppLabel({
+            namespace,
+            appName,
+            projectId: process.env.GCP_PROJECT_ID,
+            region: process.env.GCP_REGION,
+            clusterName: process.env.GKE_CLUSTER_NAME,
+            serviceAccountKeyPath: process.env.GCP_SERVICE_ACCOUNT_JSON
+          });
+        } catch (err) {
+          const errorMessage = err?.message || String(err);
+          console.error("remove failed", {
+            orgId,
+            selectionId,
+            namespace,
+            appName,
+            error: errorMessage
+          });
+          await writeActivity({
+            orgId,
+            selectionId,
+            eventType: "removal_failed",
+            message: "Service removal failed",
+            metadata: { error: errorMessage }
+          });
+          return;
+        }
       }
-    }
-  }
-  res.json({ ok: true });
+      await Selection.deleteOne({ _id: selectionId, orgId });
+      await writeActivity({
+        orgId,
+        selectionId,
+        eventType: "selection_deleted",
+        message: "Service selection removed",
+        metadata: { serviceId: selection.serviceId, packageId: selection.packageId }
+      });
+    })().catch((err) => {
+      console.error("remove background task failed", err);
+    });
+  });
+
+  return res.status(202).json({ ok: true, status: "removing" });
 });
 
 const port = process.env.PORT || 4000;

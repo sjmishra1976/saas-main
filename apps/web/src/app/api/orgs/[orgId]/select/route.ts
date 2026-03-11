@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAppUrl } from "@/lib/appUrl";
 import { auth0 } from "@/lib/auth0";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
@@ -31,5 +32,5 @@ export async function POST(
     return NextResponse.json({ error: "Auth required" }, { status: 401 });
   }
 
-  return NextResponse.redirect(new URL(`/orgs/${orgId}`, req.url));
+  return NextResponse.redirect(toAppUrl(`/orgs/${orgId}`, req));
 }
